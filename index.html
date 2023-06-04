@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <title>Embase Parser</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<style>
+			html {
+				background-color: #dbdbdb;
+				font-family: helvetica;
+			}
+			textarea {
+				display:block;
+				box-sizing: border-box;
+				resize: vertical;
+				border-radius: 0.5em;
+				padding: 0.5em;
+				width: 100%;
+				height: 40em;
+			}
+			
+			nav {
+				display:flex;
+				justify-content: space-between;
+				gap: 0.5em;
+				flex-wrap: wrap;
+				margin: 0.5em 0;
+			}
+			
+			a {
+				display: none;
+				flex: 1 auto;
+				flex-basis: 0;
+				text-align: center;
+				padding: 0.5em;
+				color: white;
+				background-color: #001166;
+				border-radius: 0.5em;
+				font-weight: bold;
+			}
+			
+			a[href] {
+				display:block;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+			}
+		</style>
+		<script>
+			function parse() {
+				const month = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+				// remove existing data
+				document.querySelectorAll("nav a").forEach(element => {
+					element.removeAttribute("href"); // remove file data
+					element.removeAttribute("download"); // remove filename
+				});
+				
+				// this is the content of the input box
+				let content = document.querySelector("#pastearea").value;
+
+				if (content) {
+					// before anything, create the debug data
+					document.querySelector("#debug").setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(content));
+					let fileName = "";
+					let datesCovered = "";
+					
+					// get the search terms to get date and possible file name
+					let searchMatcher = /new articles for the period (\d{4})-(\d{2})-(\d{2}) to (\d{4})-(\d{2})-(\d{2}).*“(.*?)”/;
+					if (!content.match(searchMatcher)) { // try text format
+						searchMatcher = /new articles for the period (\d{4})-(\d{2})-(\d{2}) to (\d{4})-(\d{2})-(\d{2}).*?results were found for your search:\s*(.*?)\s*\(updated/s;
+					}
+					let searchMatch = content.match(searchMatcher);
+					if (searchMatch) { // can use search terms to generate a filename and dates covered column
+						fileName = searchMatch[7].replaceAll(/[<>:\"\/\\|?*]/g,"").trim(); // remove invalid characters for filename
+						datesCovered = `${searchMatch[3]}-${month[parseInt(searchMatch[2])]}-${searchMatch[1]} - ${searchMatch[6]}-${month[parseInt(searchMatch[5])]}-${searchMatch[4]}`;
+						fileName = (fileName + " " + datesCovered).trim();
+						console.log(datesCovered);
+					}
+					
+					fileName = fileName || "Extract"; // ensure default filename
+					
+					let csvPrefix = "data:text/csv;charset=utf-8,"; // prefix csv content
+					let csvHeader = `${datesCovered ? '"Dates covered", ' : ''}"Literature reference", "Abstract"
+`;
+					let csvContent = "";
+					let matches = 0;
+					
+					// first try HTML format
+//					let literatureMatcher = /[\s\S]*?^\d+\.\s+(?<title>^.*)$\s+(?<author>^.*$)\s+(?<journal>^.*)[\s\S]*?^Abstract\s+(?<abstract>[\s\S]*?)\s*Drug Index Terms[\s\S]*?Abbreviated Journal Title\s+(^.*$)[\s\S]*?Source Publication Date\s*(\d{4})-(\d{2})-(\d{2})[\s\S]*?Article Number\s*(^.*$)[\s\S]*?/gm;
+					let literatureMatcher = /^\d+\.\s+(?<title>^.*)$\s+(?<author>^.*$)\s+(?<journal>^.*)[\s\S]*?^Abstract\s+(?<abstract>[\s\S]*?)\s*Drug Index Terms[\s\S]*?Abbreviated Journal Title\s+(^.*$)[\s\S]*?Source Publication Date\s*(\d{4})-(\d{2})-(\d{2})[\s\S]*?Article Number\s*(^.*$)/gm;
+					if (!content.match(literatureMatcher)) { // try text matcher instead
+						literatureMatcher = /^\d+\.\s*(?<title>.*?)^Full text.*?^Embase.*?(?<author>^.*?)(?<journal>^[^\n]*)\s*^Embase.*?^Abstract\s*(?<abstract>^.*?)\s*^EMTREE.*?^DIGITAL OBJECT[^\n]*\s*(?:[^\n]*doi.org)?/gms;
+					}
+			
+					for (const result of content.matchAll(literatureMatcher)) {
+						csvContent += 
+`${datesCovered ? `"${datesCovered}", ` : ''}"${result.groups.title.formatLine()}
+${result.groups.author.formatLine()}
+${result.groups.journal.formatLine()}", "${result.groups.abstract.formatLine()}"
+`;
+						console.log(
+`${result.groups.title.formatLine()}
+${result.groups.author.formatLine()}
+${result.groups.journal.formatLine()}`
+						);
+						console.log(result.groups.abstract.formatLine());
+						matches++;
+					}
+
+					if (matches > 0) {
+						document.querySelector("#download").setAttribute("href", csvPrefix + encodeURIComponent(csvContent));
+						document.querySelector("#downloadHeader").setAttribute("href", csvPrefix + encodeURIComponent(csvHeader + csvContent));
+						
+						document.querySelector("#download").setAttribute("download", `${fileName}.csv`);
+						document.querySelector("#downloadHeader").setAttribute("download", `${fileName} Header.csv`);
+						console.log("Matches: " + matches);
+					}
+				}
+			}
+			
+			String.prototype.formatLine = function() {
+				return this.replaceAll(/\r?\n/gs, " ").trim();
+			}
+		</script>
+  </head>
+  <body onload="parse();">
+		<textarea id="pastearea" oninput="parse();" placeholder="Paste content here"></textarea>
+		<nav>
+			<a id="download" download="Extract.csv">Download</a>
+			<a id="downloadHeader" download="ExtractHeader.csv">Download with Header</a>
+			<a id="debug" download="debug.txt">Debug</a>
+		</nav>
+  </body>
+</html>
